@@ -1,0 +1,104 @@
+// Enhanced MongoDB Schemas
+const mongoose = require('mongoose');
+
+const journalEntrySchema = new mongoose.Schema({
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  content: { type: String, required: true },
+  mood: { type: Number, required: true, min: 1, max: 10 },
+  analysis: {
+    emotions: {
+      joy: Number,
+      anxiety: Number,
+      sadness: Number,
+      anger: Number,
+      hope: Number
+    },
+    topics: [{
+      term: String,
+      weight: Number
+    }],
+    sentiment: {
+      score: Number,
+      comparative: Number,
+      classification: String,
+      tokens: [{
+        token: String,
+        stem: String
+      }]
+    },
+    metrics: {
+      wordCount: Number,
+      uniqueWords: Number,
+      emotionalIntensity: Number
+    }
+  },
+  tags: [String],
+  activities: [String],
+  location: {
+    type: { type: String, enum: ['Point'] },
+    coordinates: [Number]
+  },
+  weather: {
+    condition: String,
+    temperature: Number,
+    humidity: Number
+  },
+  createdAt: { type: Date, default: Date.now },
+  lastModified: { type: Date, default: Date.now }
+});
+
+// API Endpoints
+const express = require('express');
+const router = express.Router();
+const EmotionalAnalyzer = require('./advancedAnalytics');
+
+// Create journal entry with enhanced analysis
+router.post('/journal/entries', async (req, res) => {
+  try {
+    const { content, mood, activities, location } = req.body;
+    
+    // Perform advanced analysis
+    const analysis = await EmotionalAnalyzer.analyzeText(content);
+    
+    // Get weather data (mock implementation)
+    const weather = await getWeatherData(location);
+    
+    const entry = new JournalEntry({
+      userId: req.user.id,
+      content,
+      mood,
+      analysis,
+      activities,
+      location: {
+        type: 'Point',
+        coordinates: [location.longitude, location.latitude]
+      },
+      weather,
+      tags: analysis.topics.map(topic => topic.term)
+    });
+
+    await entry.save();
+    
+    // Update user's aggregate stats
+    await updateUserStats(req.user.id);
+    
+    res.status(201).json(entry);
+  } catch (error) {
+    res.status(500).json({ error: 'Error creating journal entry' });
+  }
+});
+
+// Get analytics with predictions
+router.get('/analytics', async (req, res) => {
+  try {
+    const { timeframe } = req.query;
+    const endDate = new Date();
+    const startDate = new Date();
+    
+    switch (timeframe) {
+      case 'week':
+        startDate.setDate(startDate.getDate() - 7);
+        break;
+      case 'month':
+        startDate.setMonth(startDate.getMonth() - 1);
+        break;
