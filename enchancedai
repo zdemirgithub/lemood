@@ -1,0 +1,144 @@
+// advancedAnalytics.js
+const natural = require('natural');
+const { WordTokenizer, PorterStemmer, BayesClassifier } = natural;
+const ml = require('ml-sentiment');
+const tfIdf = new natural.TfIdf();
+
+class EmotionalAnalyzer {
+  constructor() {
+    this.classifier = new BayesClassifier();
+    this.tokenizer = new WordTokenizer();
+    this.sentiment = new ml();
+    this.emotionPatterns = {
+      joy: /\b(happy|delighted|excited|grateful|wonderful|blessed|love|amazing)\b/gi,
+      anxiety: /\b(worried|anxious|nervous|stressed|overwhelmed|uneasy)\b/gi,
+      sadness: /\b(sad|disappointed|hurt|lonely|depressed|down|upset)\b/gi,
+      anger: /\b(angry|frustrated|annoyed|mad|furious|irritated)\b/gi,
+      hope: /\b(hopeful|optimistic|looking forward|excited about|eager)\b/gi
+    };
+    this.initializeClassifier();
+  }
+
+  async initializeClassifier() {
+    // Training data would be loaded from a database
+    const trainingData = [
+      { text: "I feel great about my progress", label: "positive" },
+      { text: "Things are really difficult right now", label: "negative" },
+      // ... more training data
+    ];
+
+    trainingData.forEach(({ text, label }) => {
+      this.classifier.addDocument(text, label);
+    });
+    await this.classifier.train();
+  }
+
+  async analyzeText(text) {
+    const tokens = this.tokenizer.tokenize(text.toLowerCase());
+    const stems = tokens.map(token => PorterStemmer.stem(token));
+    
+    // Emotional pattern matching
+    const emotions = {};
+    Object.entries(this.emotionPatterns).forEach(([emotion, pattern]) => {
+      const matches = (text.match(pattern) || []).length;
+      emotions[emotion] = matches > 0 ? matches / tokens.length : 0;
+    });
+
+    // Topic extraction
+    tfIdf.addDocument(text);
+    const topics = [];
+    tfIdf.listTerms(0 /* document index */).slice(0, 5).forEach(item => {
+      topics.push({
+        term: item.term,
+        weight: item.tfidf
+      });
+    });
+
+    // Sentiment analysis
+    const sentimentScore = this.sentiment.analyze(text);
+    const classification = await this.classifier.classify(text);
+
+    return {
+      emotions,
+      topics,
+      sentiment: {
+        score: sentimentScore.score,
+        comparative: sentimentScore.comparative,
+        classification,
+        tokens: tokens.map(token => ({
+          token,
+          stem: PorterStemmer.stem(token)
+        }))
+      },
+      metrics: {
+        wordCount: tokens.length,
+        uniqueWords: new Set(tokens).size,
+        emotionalIntensity: Object.values(emotions).reduce((a, b) => a + b, 0)
+      }
+    };
+  }
+
+  async predictMoodTrend(historicalEntries) {
+    const moodScores = historicalEntries.map(entry => ({
+      score: entry.sentiment.score,
+      date: new Date(entry.createdAt)
+    }));
+
+    // Simple linear regression for trend
+    const xValues = moodScores.map(m => m.date.getTime());
+    const yValues = moodScores.map(m => m.score);
+    
+    const n = xValues.length;
+    const sumX = xValues.reduce((a, b) => a + b, 0);
+    const sumY = yValues.reduce((a, b) => a + b, 0);
+    const sumXY = xValues.reduce((sum, x, i) => sum + x * yValues[i], 0);
+    const sumXX = xValues.reduce((sum, x) => sum + x * x, 0);
+    
+    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Predict next week's mood
+    const nextWeek = new Date();
+    nextWeek.setDate(nextWeek.getDate() + 7);
+    const prediction = slope * nextWeek.getTime() + intercept;
+
+    return {
+      currentTrend: slope > 0 ? 'improving' : slope < 0 ? 'declining' : 'stable',
+      predictedMood: prediction,
+      confidence: Math.min(Math.abs(slope) * 100, 100),
+      factors: this.analyzeTrendFactors(historicalEntries)
+    };
+  }
+
+  analyzeTrendFactors(entries) {
+    const factors = {};
+    entries.forEach(entry => {
+      entry.topics.forEach(topic => {
+        if (!factors[topic.term]) {
+          factors[topic.term] = {
+            count: 0,
+            positiveImpact: 0,
+            negativeImpact: 0
+          };
+        }
+        factors[topic.term].count++;
+        if (entry.sentiment.score > 0) {
+          factors[topic.term].positiveImpact++;
+        } else if (entry.sentiment.score < 0) {
+          factors[topic.term].negativeImpact++;
+        }
+      });
+    });
+    
+    return Object.entries(factors)
+      .map(([term, stats]) => ({
+        term,
+        impact: (stats.positiveImpact - stats.negativeImpact) / stats.count,
+        frequency: stats.count
+      }))
+      .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
+      .slice(0, 5);
+  }
+}
+
+module.exports = new EmotionalAnalyzer();
