@@ -1,0 +1,225 @@
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Avatar } from '@/components/ui/avatar';
+import { Bell, Download, Heart, MessageCircle, Share } from 'lucide-react';
+
+const CommunitySection = () => {
+  const [posts, setPosts] = useState([]);
+  const [newPost, setNewPost] = useState('');
+  const [isAnonymous, setIsAnonymous] = useState(false);
+
+  useEffect(() => {
+    fetchPosts();
+  }, []);
+
+  const fetchPosts = async () => {
+    try {
+      const response = await fetch('/api/community/posts', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      const data = await response.json();
+      setPosts(data);
+    } catch (error) {
+      console.error('Error fetching posts:', error);
+    }
+  };
+
+  const handleSubmitPost = async () => {
+    try {
+      await fetch('/api/community/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ content: newPost, isAnonymous })
+      });
+      setNewPost('');
+      fetchPosts();
+    } catch (error) {
+      console.error('Error creating post:', error);
+    }
+  };
+
+  return (
+    <div className="max-w-4xl mx-auto p-4">
+      <Card className="mb-6">
+        <CardHeader>
+          <CardTitle>Share with Community</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <textarea
+              value={newPost}
+              onChange={(e) => setNewPost(e.target.value)}
+              className="w-full p-2 border rounded-md"
+              placeholder="Share your thoughts..."
+              rows={4}
+            />
+            <div className="flex items-center space-x-4">
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={isAnonymous}
+                  onChange={(e) => setIsAnonymous(e.target.checked)}
+                />
+                <span>Post anonymously</span>
+              </label>
+              <Button onClick={handleSubmitPost}>Share</Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="space-y-4">
+        {posts.map((post) => (
+          <Card key={post._id}>
+            <CardHeader>
+              <div className="flex items-center space-x-2">
+                <Avatar>
+                  {post.isAnonymous ? 'A' : post.userId.name[0]}
+                </Avatar>
+                <div>
+                  <h3 className="font-medium">
+                    {post.isAnonymous ? 'Anonymous' : post.userId.name}
+                  </h3>
+                  <p className="text-sm text-gray-500">
+                    {new Date(post.createdAt).toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <p>{post.content}</p>
+            </CardContent>
+            <CardFooter className="flex justify-between">
+              <div className="flex space-x-4">
+                <Button variant="ghost" size="sm">
+                  <Heart className="w-4 h-4 mr-2" />
+                  {post.likes.length}
+                </Button>
+                <Button variant="ghost" size="sm">
+                  <MessageCircle className="w-4 h-4 mr-2" />
+                  {post.comments.length}
+                </Button>
+              </div>
+              <Button variant="ghost" size="sm">
+                <Share className="w-4 h-4" />
+              </Button>
+            </CardFooter>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const AuthSection = () => {
+  const [isLogin, setIsLogin] = useState(true);
+  const [formData, setFormData] = useState({
+    email: '',
+    password: '',
+    name: ''
+  });
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+    
+    try {
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formData)
+      });
+      
+      const data = await response.json();
+      if (data.token) {
+        localStorage.setItem('token', data.token);
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Auth error:', error);
+    }
+  };
+
+  return (
+    <Card className="max-w-md mx-auto mt-8">
+      <CardHeader>
+        <CardTitle>{isLogin ? 'Login' : 'Register'}</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {!isLogin && (
+            <Input
+              placeholder="Name"
+              value={formData.name}
+              onChange={(e) => setFormData({...formData, name: e.target.value})}
+            />
+          )}
+          <Input
+            type="email"
+            placeholder="Email"
+            value={formData.email}
+            onChange={(e) => setFormData({...formData, email: e.target.value})}
+          />
+          <Input
+            type="password"
+            placeholder="Password"
+            value={formData.password}
+            onChange={(e) => setFormData({...formData, password: e.target.value})}
+          />
+          <Button type="submit" className="w-full">
+            {isLogin ? 'Login' : 'Register'}
+          </Button>
+        </form>
+        <Button
+          variant="link"
+          className="mt-4"
+          onClick={() => setIsLogin(!isLogin)}
+        >
+          {isLogin ? 'Need an account? Register' : 'Have an account? Login'}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+};
+
+const AppShell = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    setIsAuthenticated(!!token);
+  }, []);
+
+  return (
+    <div>
+      {!isAuthenticated ? (
+        <AuthSection />
+      ) : (
+        <Tabs defaultValue="community" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="journal">Journal</TabsTrigger>
+            <TabsTrigger value="community">Community</TabsTrigger>
+          </TabsList>
+          <TabsContent value="journal">
+            {/* Journal component would go here */}
+          </TabsContent>
+          <TabsContent value="community">
+            <CommunitySection />
+          </TabsContent>
+        </Tabs>
+      )}
+    </div>
+  );
+};
+
+export default AppShell;
